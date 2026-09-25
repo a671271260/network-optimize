@@ -26,7 +26,22 @@ if [ ! -t 1 ]; then
     CYAN=''; GREEN=''; YELLOW=''; RED=''; WHITE=''; RESET=''
 fi
 
-VERSION="v1.0.1"
+# ------------------------------------------------------------
+# 兼容「curl ... | bash」一键运行方式
+#   管道运行时标准输入是「脚本内容本身」而非键盘，直接 read 会读到脚本
+#   残留内容或 EOF，表现为菜单刷屏 / 选不动数字 / 装不了 yh。
+#   这里统一封装「优先从终端读取」：有终端就读终端，没有终端（如纯脚本
+#   非交互）再退回默认 stdin。只作用于读取输入，不影响 bash 继续读脚本。
+# ------------------------------------------------------------
+read_tty() {
+    if { true < /dev/tty; } 2>/dev/null; then
+        read -r "$@" < /dev/tty
+    else
+        read -r "$@"
+    fi
+}
+
+VERSION="v1.0.2"
 
 # ------------------------------------------------------------
 # 线路预设参数（菜单、命令行、帮助共用同一份，改这里一处即可）
@@ -301,9 +316,9 @@ apply_profile() {
 menu_custom() {
     echo
     echo -en "${CYAN}请输入带宽 (Mbps，例如 93): ${RESET}"
-    read -r rate
+    read_tty rate
     echo -en "${CYAN}请输入 RTT (ms，例如 120): ${RESET}"
-    read -r rtt
+    read_tty rtt
 
     if ! [[ "$rate" =~ ^[0-9]+$ ]] || ! [[ "$rtt" =~ ^[0-9]+$ ]]; then
         echo -e "${RED}输入无效：带宽与 RTT 必须是数字。${RESET}"
@@ -384,7 +399,7 @@ disable_cake() {
 uninstall_all() {
     echo -e "${YELLOW}此操作将移除本脚本写入的全部配置，是否继续？[y/N]${RESET}"
     echo -en "${CYAN}请输入: ${RESET}"
-    read -r ans
+    read_tty ans
 
     case "$ans" in
         y|Y) : ;;
@@ -462,20 +477,28 @@ fetch_script() {
 # ------------------------------------------------------------
 install_shortcut() {
     local target="/usr/local/bin/netopt.sh"
+    local marker="NETOPT.SH"
 
     echo
     echo -e "${CYAN}正在安装快捷启动命令 yh ...${RESET}"
 
-    if [ -f "$0" ] && [ "$(basename "$0")" != "bash" ]; then
+    # 优先复制本地脚本本体：但必须满足「真实普通文件 + 非空 + 是本脚本」，
+    # 否则在「bash <(curl ...)」方式下会把 /dev/fd 管道复制成一个空文件。
+    if [ -f "$0" ] && [ -s "$0" ] && grep -q "$marker" "$0" 2>/dev/null; then
         cp -f "$0" "$target" 2>/dev/null || true
     fi
 
-    if [ ! -s "$target" ]; then
+    # 本地复制不可用或结果无效：改从仓库下载一份完整脚本（raw -> API -> git）
+    if ! grep -q "$marker" "$target" 2>/dev/null; then
+        echo -e "${YELLOW}正在从仓库下载脚本本体...${RESET}"
         fetch_script "$target" || true
     fi
 
-    if [ ! -s "$target" ]; then
-        echo -e "${RED}安装失败：无法获取脚本文件（缺少 curl/git 或网络不通）。${RESET}"
+    # 最终校验：存在、非空、且确实是本脚本，才允许安装快捷命令
+    if [ ! -s "$target" ] || ! grep -q "$marker" "$target" 2>/dev/null; then
+        echo -e "${RED}安装失败：未能获取有效的脚本文件（缺少 curl/git 或网络不通）。${RESET}"
+        echo -e "${YELLOW}可稍后重试，或手动把脚本放到 ${target} 后再选本项。${RESET}"
+        rm -f "$target" 2>/dev/null || true
         return 1
     fi
 
@@ -568,11 +591,16 @@ main() {
     fi
 
     # 无参数：进入交互菜单
+    # 首次进入菜单时若尚未安装快捷命令 yh，则静默自动安装一次（已装则跳过）
+    if [ ! -x /usr/local/bin/yh ]; then
+        install_shortcut >/dev/null 2>&1 || true
+    fi
+
     while true; do
         show_banner
         show_menu
         echo -en "${CYAN}请输入你的选择: ${RESET}"
-        read -r choice
+        read_tty choice
 
         case "$choice" in
             1)   apply_profile "台湾" "$PROFILE_TAIWAN_RATE" "$PROFILE_TAIWAN_RTT" ;;
@@ -589,7 +617,7 @@ main() {
 
         echo
         echo -en "${YELLOW}按回车键返回主菜单...${RESET}"
-        read -r _
+        read_tty _
     done
 }
 

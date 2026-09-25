@@ -2,8 +2,8 @@
 
 > 适用对象：需要给「中转服务器」做网络优化的运维 / 使用者
 > 脚本用途：一键给 Linux 服务器开启 **BBR 加速 + CAKE 限速整形**，适合 100Mbps 的 TCP / Realm 中转线路（台湾、中东等跨境场景）
-> 当前版本：**v1.0.1（菜单交互版）**
-> 仓库地址：https://gitee.com/xiaoxiwl521/network-optimize
+> 当前版本：**v1.0.2（菜单交互版）**
+> 仓库地址：https://github.com/a671271260/network-optimize
 
 ---
 
@@ -39,26 +39,26 @@
 
 ### 方式 A：一条命令直接跑（推荐，无需上传）
 
-在服务器上直接执行（会拉取最新脚本并运行菜单）：
+在服务器上直接执行（拉取最新脚本并运行菜单）：
 
 ```bash
-curl -fsSL --retry 2 --connect-timeout 10 "https://gitee.com/api/v5/repos/xiaoxiwl521/network-optimize/contents/ty.sh?ref=master" | sed -n 's/.*"content":"\([^"]*\)".*/\1/p' | base64 -d | sudo bash
+curl -fsSL --retry 2 --connect-timeout 10 "https://raw.githubusercontent.com/a671271260/network-optimize/main/ty.sh" | sudo bash
 ```
 
-执行后进入菜单，输入数字选择即可。
+执行后进入菜单，输入数字选择即可。**首次进入菜单会自动装好快捷命令 `yh`**，以后直接输 `yh` 就能启动。
+（脚本已内置兼容：即使这样用管道运行，菜单也能正常接收键盘输入。）
 
-> 说明：Gitee 的 `raw` 直链可能被内容风控拦截（返回 HTTP 451），所以上面改走 **Gitee API 取内容再 base64 解码**，更稳定。
-> 若服务器缺少 `sed` / `base64`，可改用 git 方式：
+> 若服务器访问不了 `raw.githubusercontent.com`（部分地区网络受限），可改用 git 方式：
 >
 > ```bash
-> git clone --depth 1 https://gitee.com/xiaoxiwl521/network-optimize.git /tmp/netopt && sudo bash /tmp/netopt/ty.sh && rm -rf /tmp/netopt
+> git clone --depth 1 https://github.com/a671271260/network-optimize.git /tmp/netopt && sudo bash /tmp/netopt/ty.sh && rm -rf /tmp/netopt
 > ```
 
 ### 方式 B：先下载再执行
 
 ```bash
-# 1) 下载到 /root/netopt.sh（走 API，避开 raw 风控）
-curl -fsSL --retry 2 --connect-timeout 10 "https://gitee.com/api/v5/repos/xiaoxiwl521/network-optimize/contents/ty.sh?ref=master" | sed -n 's/.*"content":"\([^"]*\)".*/\1/p' | base64 -d > /root/netopt.sh
+# 1) 下载到 /root/netopt.sh
+curl -fsSL --retry 2 --connect-timeout 10 "https://raw.githubusercontent.com/a671271260/network-optimize/main/ty.sh" -o /root/netopt.sh
 
 # 2) 赋权
 chmod +x /root/netopt.sh
@@ -85,7 +85,7 @@ bash /root/netopt.sh
 
 ```
              NETOPT（大字母横幅）
-网络优化脚本工具箱  v1.0.1
+网络优化脚本工具箱  v1.0.2
 命令输入 yh 可快速启动脚本
 ----------------------------------------
 1.   台湾线路优化   [94M / 50ms]
@@ -143,8 +143,8 @@ bash /root/netopt.sh
 | `/etc/modules-load.d/network-optimize.conf` | 开机加载 `tcp_bbr`、`sch_cake` | 覆盖前自动备份为 `.bak` |
 | `/usr/local/sbin/network-cake.sh` | CAKE 限速脚本 | 覆盖前自动备份为 `.bak` |
 | `/etc/systemd/system/network-cake.service` | 开机自动恢复限速的服务 | `daemon-reload` + `enable`，并立即应用一次 |
-| `/usr/local/bin/netopt.sh` | 快捷命令实际调用的脚本副本 | 仅使用菜单项 `7` 时写入 |
-| `/usr/local/bin/yh` | 快捷启动命令 | 仅使用菜单项 `7` 时写入 |
+| `/usr/local/bin/netopt.sh` | 快捷命令实际调用的脚本副本 | 首次进入菜单时自动写入（菜单项 `7` 也可手动重装） |
+| `/usr/local/bin/yh` | 快捷启动命令 | 首次进入菜单时自动写入（菜单项 `7` 也可手动重装） |
 
 > 脚本在**覆盖同名文件前会自动备份**为 `<原文件名>.bak`（仅备份一次，保留机器上最原始的那份）；卸载时会**优先用 `.bak` 还原**，没有备份则删除。
 
@@ -236,11 +236,17 @@ tc qdisc del dev "$IFACE" root 2>/dev/null || true
 
 > 想连 TCP Buffer 等参数都完全回到出厂值，重启一次即可。
 
-### 7. 装完 `yh` 命令后敲 `yh` 没反应
-确认 `/usr/local/bin` 在 `$PATH` 里，且 `/usr/local/bin/yh` 有执行权限：
+### 7. 敲 `yh` 提示 `command not found` / 没反应
+**原因**：以前用 `curl ... | bash` 这种管道方式运行时，脚本等待输入的 `read` 会去读管道（也就是脚本自身内容），导致菜单选不动数字、`yh` 根本装不上。**v1.0.2 已修复**：菜单改为从终端读键盘，并在首次进入菜单时自动装好 `yh`。
+
+**处理**：用 v1.0.2 的命令重新跑一次（见「方式 A」），进入菜单后 `yh` 即自动装好。若仍不行，手动排查：
 
 ```bash
-ls -l /usr/local/bin/yh
+# 看两个文件是否存在、是否为空
+ls -l /usr/local/bin/yh /usr/local/bin/netopt.sh
+# 看脚本本体行数是否正常（应为几百行，不是 0）
+wc -l /usr/local/bin/netopt.sh
+# 确认命令目录在 PATH 里
 echo $PATH
 ```
 
@@ -251,20 +257,22 @@ echo $PATH
 nstat -az | grep -E 'TcpRetransSegs|TcpExtTCPTimeouts|TcpExtTCPSpuriousRTOs'
 ```
 
-### 9. 一键命令报错 `The requested URL returned error: 451`
-说明 Gitee 的 `raw` 直链被内容风控拦截了（451 = 因合规原因不可用）。**解决办法：不要用 `raw` 直链，改用 API 方式**：
+### 9. 一键命令拉取脚本失败
+仓库已迁到 GitHub。若 `raw.githubusercontent.com` 在你所在网络访问不了，依次尝试：
 
 ```bash
-curl -fsSL --retry 2 --connect-timeout 10 "https://gitee.com/api/v5/repos/xiaoxiwl521/network-optimize/contents/ty.sh?ref=master" | sed -n 's/.*"content":"\([^"]*\)".*/\1/p' | base64 -d | sudo bash
+# ① raw 直链（推荐）
+curl -fsSL --retry 2 --connect-timeout 10 "https://raw.githubusercontent.com/a671271260/network-optimize/main/ty.sh" | sudo bash
+
+# ② GitHub API 原始内容（raw 被墙时的备用）
+curl -fsSL --retry 2 --connect-timeout 10 -H "Accept: application/vnd.github.raw" \
+  "https://api.github.com/repos/a671271260/network-optimize/contents/ty.sh?ref=main" | sudo bash
+
+# ③ git 浅克隆（最稳，走 443）
+git clone --depth 1 https://github.com/a671271260/network-optimize.git /tmp/netopt && sudo bash /tmp/netopt/ty.sh && rm -rf /tmp/netopt
 ```
 
-或使用 git 克隆方式（不受 raw 风控影响）：
-
-```bash
-git clone --depth 1 https://gitee.com/xiaoxiwl521/network-optimize.git /tmp/netopt && sudo bash /tmp/netopt/ty.sh && rm -rf /tmp/netopt
-```
-
-> 脚本内置的「安装快捷命令 yh」（菜单 `7`）也已改成走 API + base64，不再依赖 `raw` 直链。
+> 脚本内置的「安装快捷命令 yh」也用同样的三级回退（raw → API → git）自动下载，无需手动处理。
 
 ---
 
@@ -299,16 +307,16 @@ yh
 ## 十一、一键执行示例（复制即用）
 
 ```bash
-# 1) 直接跑菜单（推荐）
-curl -fsSL --retry 2 --connect-timeout 10 "https://gitee.com/api/v5/repos/xiaoxiwl521/network-optimize/contents/ty.sh?ref=master" | sed -n 's/.*"content":"\([^"]*\)".*/\1/p' | base64 -d | sudo bash
+# 1) 直接跑菜单（推荐，首次进菜单自动装好 yh）
+curl -fsSL --retry 2 --connect-timeout 10 "https://raw.githubusercontent.com/a671271260/network-optimize/main/ty.sh" | sudo bash
 
 # 2) 或先下载再跑
-curl -fsSL --retry 2 --connect-timeout 10 "https://gitee.com/api/v5/repos/xiaoxiwl521/network-optimize/contents/ty.sh?ref=master" | sed -n 's/.*"content":"\([^"]*\)".*/\1/p' | base64 -d > /root/netopt.sh
+curl -fsSL --retry 2 --connect-timeout 10 "https://raw.githubusercontent.com/a671271260/network-optimize/main/ty.sh" -o /root/netopt.sh
 chmod +x /root/netopt.sh
 sudo bash /root/netopt.sh
 
 # 3) 或 git 方式
-git clone --depth 1 https://gitee.com/xiaoxiwl521/network-optimize.git /tmp/netopt && sudo bash /tmp/netopt/ty.sh && rm -rf /tmp/netopt
+git clone --depth 1 https://github.com/a671271260/network-optimize.git /tmp/netopt && sudo bash /tmp/netopt/ty.sh && rm -rf /tmp/netopt
 
 # 4) 免交互执行（三选一）
 sudo bash /root/netopt.sh taiwan
