@@ -5,7 +5,7 @@
 #  功能：一键给服务器开启 BBR 加速 + CAKE 限速整形
 #  适用：100Mbps 的 TCP / Realm 中转线路（台湾、中东等跨境场景）
 #
-#  仓库：https://gitee.com/xiaoxiwl521/network-optimize
+#  仓库：https://github.com/a671271260/network-optimize
 #
 #  运行：bash netopt.sh        （菜单版，输入数字选择）
 #        bash netopt.sh taiwan（也可直接带参数按原方式执行）
@@ -47,11 +47,14 @@ SERVICE_FILE="/etc/systemd/system/network-cake.service"
 
 # ------------------------------------------------------------
 # 仓库地址（供「安装快捷命令 yh」下载脚本本体用）
-#   raw 直链可能被 Gitee 内容风控拦截（HTTP 451），
-#   所以默认走 API + base64 解码，失败再退回 git 浅克隆。
+#   下载优先级：raw 直链 -> GitHub API 原始内容 -> git 浅克隆
 # ------------------------------------------------------------
-REPO_API="https://gitee.com/api/v5/repos/xiaoxiwl521/network-optimize/contents/ty.sh?ref=master"
-REPO_GIT="https://gitee.com/xiaoxiwl521/network-optimize.git"
+REPO_OWNER="a671271260"
+REPO_NAME="network-optimize"
+REPO_BRANCH="main"
+REPO_RAW="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_BRANCH}/ty.sh"
+REPO_API="https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/ty.sh?ref=${REPO_BRANCH}"
+REPO_GIT="https://github.com/${REPO_OWNER}/${REPO_NAME}.git"
 
 IFACE=""
 
@@ -414,23 +417,32 @@ uninstall_all() {
 
 # ------------------------------------------------------------
 # 下载脚本本体到指定路径
-#   raw 直链可能被 Gitee 风控拦截（451），因此：
-#   方式一：走 Gitee API 取 base64 内容解码
-#   方式二：git 浅克隆后从仓库拷贝
+#   方式一：raw 直链（https://raw.githubusercontent.com）
+#   方式二：GitHub API 取原始内容（Accept: application/vnd.github.raw）
+#   方式三：git 浅克隆后从仓库拷贝
 # 参数：$1 = 输出文件路径
 # ------------------------------------------------------------
 fetch_script() {
     local out="$1"
 
+    # 方式一：raw 直链
     if command -v curl >/dev/null 2>&1; then
-        if curl -fsSL --retry 2 --connect-timeout 10 "$REPO_API" 2>/dev/null \
-            | sed -n 's/.*"content":"\([^"]*\)".*/\1/p' \
-            | tr -d '\n\r' \
-            | base64 -d > "$out" 2>/dev/null; then
-            [ -s "$out" ] && return 0
+        if curl -fsSL --retry 2 --connect-timeout 10 "$REPO_RAW" -o "$out" 2>/dev/null \
+            && [ -s "$out" ]; then
+            return 0
         fi
     fi
 
+    # 方式二：GitHub API 原始内容
+    if command -v curl >/dev/null 2>&1; then
+        if curl -fsSL --retry 2 --connect-timeout 10 \
+            -H "Accept: application/vnd.github.raw" "$REPO_API" -o "$out" 2>/dev/null \
+            && [ -s "$out" ]; then
+            return 0
+        fi
+    fi
+
+    # 方式三：git 浅克隆
     if command -v git >/dev/null 2>&1; then
         local tmp
         tmp="$(mktemp -d 2>/dev/null || echo "/tmp/netopt.$$")"
